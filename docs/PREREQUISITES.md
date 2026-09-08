@@ -173,11 +173,24 @@ This creates the projects used by Q1-Q15 and seeds only the resources that are i
 
 ## 10. Final environment check
 
-Run:
+The verification script is designed to work with either the **developer** account or **kubeadmin**. Some cluster-wide resources such as `ClusterOperator` objects are intentionally not readable by a normal developer. The script therefore uses API discovery for developer-safe checks and performs stronger health checks when you run it as cluster-admin.
+
+After `setup.sh`, while logged in as `developer`, run:
 
 ```bash
 ./scripts/verify-env.sh
 ```
+
+A developer run should pass the exam-relevant API checks. You may see a `WARN` saying the registry operator health check was skipped because the current user is not cluster-admin; that warning is expected.
+
+For a full cluster-health check, switch to kubeadmin and run the same script once:
+
+```bash
+oc login -u kubeadmin https://api.crc.testing:6443
+./scripts/verify-env.sh
+```
+
+Do not put the kubeadmin password in this repository or any script.
 
 Then confirm the projects:
 
@@ -185,7 +198,7 @@ Then confirm the projects:
 oc get project | grep -E 'crdmson|tndy|totain|octane|acid|helm-lab|kustomize-lab|streams-lab|troubleshoot-lab|multi-lab|pipeline-lab|operator-lab'
 ```
 
-You are ready when the cluster-wide checks pass, Pipelines is installed, the NGINX Gateway Fabric CRD exists, and the lab projects have been created.
+You are ready when the developer-safe checks pass, Pipelines and the NGINX Gateway Fabric APIs are discoverable, and the lab projects have been created. A one-time kubeadmin run is recommended after rebuilding CRC to confirm cluster-wide operator health.
 
 ## Repeating the mock without deleting CRC
 
