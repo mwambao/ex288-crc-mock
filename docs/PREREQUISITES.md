@@ -167,9 +167,19 @@ Switch to the developer account:
 ```bash
 oc login -u developer -p developer https://api.crc.testing:6443
 ./scripts/setup.sh
+
+If `setup.sh` reports that a project already exists but `developer` cannot access it, switch back to cluster-admin and run:
+
+```bash
+./scripts/bootstrap-crc.sh
 ```
 
-This creates the projects used by Q1-Q15 and seeds only the resources that are intentionally present at exam start.
+Then log in as `developer` again and rerun `./scripts/setup.sh`. The bootstrap is idempotent and will grant `developer` access to all lab projects without deleting their contents.
+```
+
+The cluster-admin bootstrap creates the projects used by Q1-Q15 and grants the CRC `developer` account project-admin access to each one. `setup.sh` then seeds only the resources that are intentionally present at exam start.
+
+This split is deliberate: if a project already exists but was originally created by `kubeadmin`, the `developer` user may not be able to see it. In that situation an older `setup.sh` could fail with `AlreadyExists`. Re-run `bootstrap-crc.sh` once as cluster-admin to repair project access, then run `setup.sh` as `developer`.
 
 ## 10. Final environment check
 

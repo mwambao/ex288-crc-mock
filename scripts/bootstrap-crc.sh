@@ -100,5 +100,14 @@ oc patch configs.imageregistry.operator.openshift.io/cluster --type=merge -p '{"
 say "Storage"
 oc get storageclass
 
+
+say "Lab projects and developer access"
+LAB_PROJECTS=(crdmson tndy totain octane acid helm-lab kustomize-lab streams-lab troubleshoot-lab multi-lab pipeline-lab operator-lab)
+for p in "${LAB_PROJECTS[@]}"; do
+  oc get namespace "$p" >/dev/null 2>&1 || oc new-project "$p" >/dev/null
+  # Make the CRC developer account the project administrator, equivalent to having created the project itself.
+  oc adm policy add-role-to-user admin developer -n "$p" >/dev/null
+done
+
 say "Cluster bootstrap complete"
 echo "Next: log in as developer, run ./scripts/setup.sh, then ./scripts/verify-env.sh"
