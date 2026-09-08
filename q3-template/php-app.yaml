@@ -1,0 +1,32 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata: {name: ex288-web-cache}
+parameters:
+- name: APPLICATION_DOMAIN
+  required: true
+- name: HELLO_MESSAGE
+  value: Bonjour Engineers
+objects:
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata: {name: web}
+  spec:
+    replicas: 1
+    selector: {matchLabels: {app: web}}
+    template:
+      metadata: {labels: {app: web}}
+      spec:
+        containers:
+        - name: web
+          image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+          command: ["/bin/sh","-c"]
+          args: ["while true; do { echo -e 'HTTP/1.1 200 OK\\r\\n'; echo '${HELLO_MESSAGE}'; } | nc -l -p 8080; done"]
+          ports: [{containerPort: 8080}]
+- apiVersion: v1
+  kind: Service
+  metadata: {name: web}
+  spec: {selector: {app: web}, ports: [{port: 8080,targetPort: 8080}]}
+- apiVersion: route.openshift.io/v1
+  kind: Route
+  metadata: {name: web}
+  spec: {host: "${APPLICATION_DOMAIN}", to: {kind: Service,name: web}}

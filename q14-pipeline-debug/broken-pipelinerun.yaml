@@ -1,0 +1,6 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata: {generateName: broken-run-}
+spec:
+ pipelineRef: {name: ex288-pipline}
+ params: [{name: message,value: fixed-pipeline-ok}]

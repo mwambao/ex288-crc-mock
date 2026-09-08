@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: kweb}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: kweb}}
+  template:
+    metadata: {labels: {app: kweb}}
+    spec:
+      containers:
+      - name: web
+        image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+        command: ["/bin/sh","-c","sleep 3600"]
+        env: [{name: APP_ENV,value: base}]
