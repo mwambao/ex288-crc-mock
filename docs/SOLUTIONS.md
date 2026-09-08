@@ -50,7 +50,7 @@ podman push default-route-openshift-image-registry.apps-crc.testing/crdmson/regi
 podman pull default-route-openshift-image-registry.apps-crc.testing/crdmson/registry-test:1 --tls-verify=false
 oc get is -n crdmson
 ```
-
+OR
 ```bash
 oc login -u developer -p developer https://api.crc.testing:6443
 HOST=$(oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}')
