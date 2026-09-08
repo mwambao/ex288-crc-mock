@@ -17,11 +17,40 @@ Use the form to save `Per aspera ad astra`, then curl again.
 ## Q2
 Admin step:
 ```bash
+----- MWAMBA ------
+#as KUBEADMIN
+oc api-resources | egrep -i 'imageregistry|Name'
+oc edit configs.imageregistry.operator.openshift.io
+
+change:
+defaultRoute: false
+TO
+defaultRoute: true
+
+#default route will show after few minutes
+oc get route -n openshift-image-registry -w
+NAME            HOST/PORT                                                 PATH   SERVICES         PORT    TERMINATION   WILDCARD
+default-route   default-route-openshift-image-registry.apps-crc.testing          image-registry   <all>   reencrypt     None
+```
+OR
+
+```bash
 oc login -u kubeadmin https://api.crc.testing:6443
 oc patch configs.imageregistry.operator.openshift.io/cluster --type=merge -p '{"spec":{"defaultRoute":true}}'
 oc get route default-route -n openshift-image-registry
 ```
 Developer/podman:
+```bash
+------ MWAMBA -----
+#as DEVELOPER
+podman login -u developer -p $(oc whoami -t) default-route-openshift-image-registry.apps-crc.testing --tls-verify=false
+podman pull registry.access.redhat.com/ubi9/ubi-minimal
+podman tag registry.access.redhat.com/ubi9/ubi-minimal default-route-openshift-image-registry.apps-crc.testing/crdmson/registry-test:1
+podman push default-route-openshift-image-registry.apps-crc.testing/crdmson/registry-test:1 --tls-verify=false --remove-signatures
+podman pull default-route-openshift-image-registry.apps-crc.testing/crdmson/registry-test:1 --tls-verify=false
+oc get is -n crdmson
+```
+
 ```bash
 oc login -u developer -p developer https://api.crc.testing:6443
 HOST=$(oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}')
