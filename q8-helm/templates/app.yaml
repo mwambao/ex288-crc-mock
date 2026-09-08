@@ -9,10 +9,13 @@ spec:
     spec:
       containers:
       - name: web
-        image: {{ .Values.image }}
-        command: ["/bin/sh","-c"]
-        args: ["while true; do { echo -e 'HTTP/1.1 200 OK\\r\\n'; echo '{{ .Values.message }}'; } | nc -l -p 8080; done"]
+        image: registry.access.redhat.com/ubi9/python-311:latest
+        command: ["/bin/bash","-c"]
+        args: ['mkdir -p /tmp/site; printf "%s\n" "{{ .Values.message }}" > /tmp/site/index.html; cd /tmp/site; python3 -m http.server 8080']
         ports: [{containerPort: 8080}]
+      - name: helper
+        image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+        command: ["/bin/sh","-c","while true; do sleep 300; done"]
 ---
 apiVersion: v1
 kind: Service

@@ -1,6 +1,7 @@
 apiVersion: template.openshift.io/v1
 kind: Template
-metadata: {name: ex288-web-cache}
+metadata:
+  name: ex288-web-cache
 parameters:
 - name: APPLICATION_DOMAIN
   required: true
@@ -9,24 +10,39 @@ parameters:
 objects:
 - apiVersion: apps/v1
   kind: Deployment
-  metadata: {name: web}
+  metadata:
+    name: web
   spec:
     replicas: 1
-    selector: {matchLabels: {app: web}}
+    selector:
+      matchLabels: {app: web}
     template:
-      metadata: {labels: {app: web}}
+      metadata:
+        labels: {app: web}
       spec:
         containers:
         - name: web
+          image: registry.access.redhat.com/ubi9/python-311:latest
+          command: ["/bin/bash","-c"]
+          args:
+          - 'mkdir -p /tmp/site; printf "%s\n" "${HELLO_MESSAGE}" > /tmp/site/index.html; cd /tmp/site; python3 -m http.server 8080'
+          env:
+          - name: HELLO_MESSAGE
+            value: "${HELLO_MESSAGE}"
+          ports:
+          - containerPort: 8080
+        - name: helper
           image: registry.access.redhat.com/ubi9/ubi-minimal:latest
-          command: ["/bin/sh","-c"]
-          args: ["while true; do { echo -e 'HTTP/1.1 200 OK\\r\\n'; echo '${HELLO_MESSAGE}'; } | nc -l -p 8080; done"]
-          ports: [{containerPort: 8080}]
+          command: ["/bin/sh","-c","while true; do sleep 300; done"]
 - apiVersion: v1
   kind: Service
   metadata: {name: web}
-  spec: {selector: {app: web}, ports: [{port: 8080,targetPort: 8080}]}
+  spec:
+    selector: {app: web}
+    ports: [{port: 8080, targetPort: 8080}]
 - apiVersion: route.openshift.io/v1
   kind: Route
   metadata: {name: web}
-  spec: {host: "${APPLICATION_DOMAIN}", to: {kind: Service,name: web}}
+  spec:
+    host: "${APPLICATION_DOMAIN}"
+    to: {kind: Service, name: web}

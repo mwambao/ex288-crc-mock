@@ -19,3 +19,19 @@ Quick path after CRC itself is running:
 9. Between attempts, run `./scripts/reset.sh`, wait for project deletion, then rerun `./scripts/setup.sh`.
 
 `reset.sh` intentionally removes only exam projects. It does **not** uninstall OpenShift Pipelines or NGINX Gateway Fabric, so you do not have to rebuild cluster-wide prerequisites after every practice attempt.
+
+## Objective alignment
+See `docs/OBJECTIVE-MAP.md` for the one-to-one coverage map against the published Red Hat EX288 (OCP 4.18) objectives. The mock was re-audited on 2026-09-08; overlapping tasks were consolidated so all 15 questions map to published objective areas.
+
+## Self-marking
+
+A read-only self-marker is included. Mark one question, selected questions, a range, or the whole mock:
+
+```bash
+./scripts/mark.sh 5
+./scripts/mark.sh 1 3 7
+./scripts/mark.sh 1-5
+./scripts/mark.sh all
+```
+
+See `docs/MARKING.md` for how PASS, FAIL, and WARN are interpreted.

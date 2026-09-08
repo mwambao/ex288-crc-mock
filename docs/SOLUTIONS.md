@@ -40,9 +40,12 @@ oc project tndy
 oc create -f q3-template/php-app.yaml
 oc process ex288-web-cache --parameters
 oc process ex288-web-cache -p APPLICATION_DOMAIN=web-tndy.apps-crc.testing -p 'HELLO_MESSAGE=Bonjour Engineers' | oc apply -f -
-oc get deploy,svc,route
+oc rollout status deployment/web
+POD=$(oc get pod -l app=web -o jsonpath='{.items[0].metadata.name}')
+oc get pod "$POD" -o jsonpath='{.spec.containers[*].name}{"\n"}'
 curl http://web-tndy.apps-crc.testing
 ```
+This covers using a pre-existing YAML template, parameters, and a multi-container template.
 
 ## Q4
 ```bash
@@ -63,13 +66,19 @@ oc project octane
 oc delete deployment blog --ignore-not-found
 oc new-app python:latest~<BLOG-GIT-URL> --name=blog
 oc logs -f bc/blog
+oc patch bc/blog --type=merge --patch-file q5-build/broken-postcommit-patch.yaml
+oc start-build blog --follow
+```
+The build should fail in the post-commit hook because `missing-mailer.py` does not exist. Inspect the BuildConfig and build logs, then correct the hook:
+```bash
 POD=$(oc get pod -l deployment=blog -o name | head -1)
 oc rsh "$POD" which python3
 oc set build-hook bc/blog --post-commit --command -- /usr/bin/python3 mailer.py
 oc start-build blog --follow
 oc get bc/blog -o jsonpath='{.spec.triggers}' ; echo
+oc start-build blog --follow
 ```
-Use the `which python3` result if it is not `/usr/bin/python3`.
+Use the actual interpreter path returned by the image if it differs. This exercise deliberately tests both build troubleshooting and hooks/triggers.
 
 ## Q6
 ```bash
@@ -98,7 +107,9 @@ oc exec deployment/phosphorie -- sh -c 'test -n "$APP_TOKEN" && echo APP_TOKEN_p
 oc project helm-lab
 helm install helmy q8-helm --set replicaCount=2 --set message=hello-from-ex288
 helm status helmy
-oc get pods,route
+oc rollout status deploy/helmy
+POD=$(oc get pod -l app=helmy -o jsonpath='{.items[0].metadata.name}')
+oc get pod "$POD" -o jsonpath='{.spec.containers[*].name}{"\n"}'
 curl http://$(oc get route helmy -o jsonpath='{.spec.host}')
 helm upgrade helmy q8-helm --set replicaCount=3 --set message=upgraded-ex288
 helm history helmy
@@ -119,27 +130,41 @@ oc rollout status deploy/kweb
 ```bash
 oc project streams-lab
 oc create imagestream webbase
-oc import-image webbase:stable --from=registry.access.redhat.com/ubi9/ubi-minimal:latest --confirm
-oc create deployment stream-app --image=registry.access.redhat.com/ubi9/ubi-minimal:latest -- sleep 3600
+oc new-build --name=webbase-build --strategy=docker --binary --to=webbase:stable
+oc start-build webbase-build --from-dir=q10-imagestream --follow
+oc get build,bc,is
+oc create deployment stream-app --image=image-registry.openshift-image-registry.svc:5000/streams-lab/webbase:stable
 oc set triggers deployment/stream-app --from-image=webbase:stable -c stream-app
-oc get deployment stream-app -o yaml | grep -A8 image.openshift.io/triggers
-oc import-image webbase:stable --from=registry.access.redhat.com/ubi9/ubi-minimal:9.5 --confirm
 oc rollout status deployment/stream-app
-oc get is webbase -o yaml
+oc get deployment stream-app -o jsonpath='{.metadata.annotations.image\.openshift\.io/triggers}{"\n"}'
 ```
-If a referenced UBI tag has moved, choose two valid tags visible in the registry; the assessed skill is ImageStream import/tag + image-change trigger.
+Now change only the Dockerfile label (for example `ex288` to `ex288-rebuild`) and rebuild:
+```bash
+sed 's/ex288"/ex288-rebuild"/' q10-imagestream/Dockerfile > /tmp/Dockerfile
+mkdir -p /tmp/q10-build && cp /tmp/Dockerfile /tmp/q10-build/Dockerfile
+oc start-build webbase-build --from-dir=/tmp/q10-build --follow
+oc get is webbase -o yaml
+oc rollout history deployment/stream-app
+oc get deployment stream-app -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+```
+This covers a Docker-strategy image based on a pre-built image, BuildConfig/build execution, publishing to an ImageStream in the internal registry, and an image-change deployment trigger.
 
 ## Q11
 ```bash
 oc project troubleshoot-lab
-oc get deploy,svc,pod,endpoints
+oc get deploy,svc,pod,endpoints,endpointslices
 oc describe svc broken-web
 oc get pod --show-labels
 # root cause: Service selector app=WRONG, pod label app=broken-web
 oc patch svc broken-web --type=merge -p '{"spec":{"selector":{"app":"broken-web"}}}'
 oc get endpoints broken-web
 ```
-The backend program in this seeded exercise sleeps rather than serving HTTP; the required repair is specifically service-to-pod selection/endpoints.
+Then open the OpenShift web console, go to **Developer → Topology** (or the equivalent workload view in your CRC version), open `broken-web`, inspect its resources, and scale the Deployment from 1 to 2 replicas using the console. Verify from CLI:
+```bash
+oc rollout status deployment/broken-web
+oc get deployment broken-web
+```
+The expected result is 2 desired/ready replicas. The console step is intentional because managing applications with the web console is an explicit EX288 objective.
 
 ## Q12
 ```bash
@@ -154,27 +179,45 @@ oc rollout status deployment/multi
 ```
 
 ## Q13
-Check Tekton first:
-```bash
-oc api-resources | grep -i tekton
-```
-Then:
 ```bash
 oc project pipeline-lab
 oc apply -f q13-pipeline/pipeline.yaml
+cat > /tmp/ex288-pipeline.yaml <<'YAML'
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: ex288-pipeline
+spec:
+  params:
+  - name: message
+    type: string
+  tasks:
+  - name: say-it
+    taskRef:
+      name: echo-message
+    params:
+    - name: message
+      value: "$(params.message)"
+YAML
+oc apply -f /tmp/ex288-pipeline.yaml
 cat <<'YAML' | oc create -f -
 apiVersion: tekton.dev/v1
 kind: PipelineRun
-metadata: {generateName: ex288-run-}
+metadata:
+  generateName: ex288-run-
 spec:
-  pipelineRef: {name: ex288-pipeline}
-  params: [{name: message,value: crc-pipeline-success}]
+  pipelineRef:
+    name: ex288-pipeline
+  params:
+  - name: message
+    value: crc-pipeline-success
 YAML
 oc get pipelinerun
 oc describe pipelinerun $(oc get pr -o name | tail -1)
-# if tkn is installed:
+# If tkn is installed:
 tkn pipelinerun logs -L -f
 ```
+`Task` defines reusable work, `Pipeline` composes Tasks, and `PipelineRun` instantiates/triggers a Pipeline execution.
 
 ## Q14
 The supplied file misspells `ex288-pipeline` as `ex288-pipline`.

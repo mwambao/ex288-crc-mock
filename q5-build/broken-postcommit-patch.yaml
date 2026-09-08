@@ -1,0 +1,5 @@
+spec:
+  postCommit:
+    command:
+    - /usr/bin/python3
+    - missing-mailer.py
