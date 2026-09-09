@@ -66,7 +66,9 @@ oc get is -n crdmson
 ## Q3
 ```bash
 oc project tndy
+#upload the template into OpenShift
 oc create -f q3-template/php-app.yaml
+oc get templates
 oc process ex288-web-cache --parameters
 oc process ex288-web-cache -p APPLICATION_DOMAIN=web-tndy.apps-crc.testing -p 'HELLO_MESSAGE=Bonjour Engineers' | oc apply -f -
 oc rollout status deployment/web
