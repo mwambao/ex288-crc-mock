@@ -69,7 +69,9 @@ oc project tndy
 #upload the template into OpenShift
 oc create -f q3-template/php-app.yaml
 oc get templates
+#Do not process the template just print the available parameters
 oc process ex288-web-cache --parameters
+#Now process the template supplying the necessary paramters
 oc process ex288-web-cache -p APPLICATION_DOMAIN=web-tndy.apps-crc.testing -p 'HELLO_MESSAGE=Bonjour Engineers' | oc apply -f -
 oc rollout status deployment/web
 POD=$(oc get pod -l app=web -o jsonpath='{.items[0].metadata.name}')
