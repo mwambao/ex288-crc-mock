@@ -1,0 +1,5 @@
+replicaCount: 1
+message: helm-practice
+image:
+  repository: registry.access.redhat.com/ubi9/ubi-minimal
+  tag: latest

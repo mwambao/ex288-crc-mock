@@ -1,0 +1,1 @@
+const http=require('http');let start=Date.now();http.createServer((q,r)=>{if(q.url=='/startup'&&Date.now()-start<5000){r.statusCode=503};if(q.url=='/ready'&&Date.now()-start<8000){r.statusCode=503};r.end(q.url=='/'?'healthy':'ok')}).listen(8080,'0.0.0');

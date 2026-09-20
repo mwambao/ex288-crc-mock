@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: artifact-data}
+data:
+  banner.txt: "artifact supplied by the practice Artifactory endpoint"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: artifactory-mock}
+spec:
+  selector: {matchLabels: {app: artifactory-mock}}
+  template:
+    metadata: {labels: {app: artifactory-mock}}
+    spec:
+      containers:
+      - name: web
+        image: registry.access.redhat.com/ubi9/python-311:latest
+        command: ["python","-m","http.server","8080","--directory","/artifacts"]
+        ports: [{containerPort: 8080}]
+        volumeMounts: [{name: data, mountPath: /artifacts}]
+      volumes: [{name: data, configMap: {name: artifact-data}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: artifactory-mock}
+spec: {selector: {app: artifactory-mock}, ports: [{port: 8080, targetPort: 8080}]}

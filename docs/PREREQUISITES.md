@@ -245,3 +245,22 @@ fresh CRC
   -> setup.sh
   -> start mock exam
 ```
+
+
+# v7 remediation-lab additions
+
+## Git resources
+Create eight Git repositories reachable by CRC from the directories under `repos/`. The mock uses placeholders such as `<GIT_BASE>/q1-pastebin.git`; substitute your actual Git URLs. Keeping these as separate repos mimics an exam where different supplied repositories are referenced by different questions.
+
+## Mock Artifactory endpoint
+Q2 practices consuming a supplied artifact URL during a Docker-strategy build. As kubeadmin/admin run:
+```bash
+oc new-project lab-infra || true
+oc apply -n lab-infra -f q2-containerfile/artifact-server.yaml
+oc rollout status -n lab-infra deployment/artifactory-mock
+oc get svc -n lab-infra artifactory-mock
+```
+The in-cluster URL used by Q2 is `http://artifactory-mock.lab-infra.svc:8080/banner.txt`. This is deliberately a lightweight stand-in for an Artifactory/Nexus HTTP artifact endpoint; it does not pretend to implement the full products.
+
+## Dependency-registry practice
+Q1 accepts an `NPM_REGISTRY_URL`. For a self-contained CRC rebuild use `https://registry.npmjs.org/`. If you later deploy a real Nexus/Artifactory npm proxy, replace that value with its URL without changing the exercise.

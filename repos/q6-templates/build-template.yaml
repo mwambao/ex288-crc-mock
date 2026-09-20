@@ -1,0 +1,29 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: build-template
+parameters:
+- name: APP_NAME
+  required: true
+- name: GIT_URL
+  required: true
+- name: BUILDER
+  value: nodejs:20-ubi9
+objects:
+- apiVersion: build.openshift.io/v1
+  kind: BuildConfig
+  metadata:
+    name: ${APP_NAME}
+  spec:
+    source:
+      type: Git
+      git: {uri: "${GIT_URL}"}
+    strategy:
+      type: Source
+      sourceStrategy:
+        from: {kind: ImageStreamTag, name: "${BUILDER}", namespace: openshift}
+    output:
+      to: {kind: ImageStreamTag, name: "${APP_NAME}:latest"}
+- apiVersion: image.openshift.io/v1
+  kind: ImageStream
+  metadata: {name: "${APP_NAME}"}

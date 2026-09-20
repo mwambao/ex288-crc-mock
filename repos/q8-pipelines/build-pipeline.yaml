@@ -1,0 +1,17 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata: {name: build}
+spec:
+  params:
+  - {name: IMAGE, type: string}
+  tasks:
+  - name: build-image
+    taskSpec:
+      params: [{name: IMAGE, type: string}]
+      steps:
+      - name: build
+        image: registry.redhat.io/rhel9/buildah:latest
+        script: |
+          #!/bin/sh
+          echo "Build target: $(params.IMAGE)"
+    params: [{name: IMAGE, value: "$(params.IMAGE)"}]

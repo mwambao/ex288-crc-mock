@@ -1,0 +1,1 @@
+const express=require('express'); const app=express(); app.use(express.text()); let paste='EX288 practice'; app.get('/',(req,res)=>res.send(paste)); app.post('/',(req,res)=>{paste=req.body||paste;res.send(paste)}); app.listen(8080,'0.0.0.0');

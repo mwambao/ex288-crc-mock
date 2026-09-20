@@ -1,0 +1,8 @@
+FROM registry.access.redhat.com/ubi9/python-311:latest
+ARG ARTIFACT_URL
+USER 0
+RUN test -n "$ARTIFACT_URL" && curl -fsSL "$ARTIFACT_URL" -o /tmp/banner.txt
+USER 1001
+COPY app.py .
+EXPOSE 8080
+CMD ["python","app.py"]

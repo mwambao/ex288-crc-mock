@@ -1,37 +1,10 @@
-# EX288 CRC Mock Lab — OCP 4.18-style
+# EX288 CRC Remediation Mock v7
 
-This lab is designed around the current EX288 objective areas and has been validated on a CRC/OpenShift 4.21.8 practice cluster. The exam target used when the lab was authored is OCP 4.18, so minor CLI/API/image-tag differences are possible.
+An 8-question, three-hour remediation mock aligned to the current public EX288 objectives and ordered to match the user's observed exam structure. Start with `docs/PREREQUISITES.md`, then `docs/MOCK-EXAM.md`. Do not open `docs/SOLUTIONS.md` during a timed attempt.
 
-## First-time or rebuilt CRC environment
+Commands: `./scripts/setup.sh` prepares shared infrastructure only; `./scripts/verify-env.sh` checks the cluster; `./scripts/mark.sh 1` marks one question; `./scripts/mark.sh all` marks all eight; `./scripts/reset.sh` deletes only exam projects.
 
-If you deleted/recreated CRC, start with **`docs/PREREQUISITES.md`**. It covers the complete environment rebuild: CRC startup, admin/developer access, OperatorHub checks, OpenShift Pipelines/Tekton, NGINX Gateway Fabric for Q15, Helm, Kustomize, ImageStreams/builders, registry, storage, Git repositories, lab projects, and final validation.
+`docs/SUPPLEMENTAL-OBJECTIVES.md` retains public objectives that do not naturally fit the eight observed question headings (Kustomize, hooks/triggers, registry administration, installed Operators).
 
-Quick path after CRC itself is running:
 
-1. `eval $(crc oc-env)`
-2. Log in as a cluster administrator.
-3. Run `./scripts/bootstrap-crc.sh` to install/check cluster-wide prerequisites.
-4. Run `./scripts/verify-env.sh` and resolve any FAIL results.
-5. Push the four directories under `repos/` to Git repositories reachable by CRC and replace the `<...-GIT-URL>` placeholders in the exam.
-6. Log in as `developer` and run `./scripts/setup.sh` to create/reset the per-question lab resources.
-7. Attempt `docs/MOCK-EXAM.md` without opening solutions.
-8. Review `docs/SOLUTIONS.md` afterward.
-9. Between attempts, run `./scripts/reset.sh`, wait for project deletion, then rerun `./scripts/setup.sh`.
-
-`reset.sh` intentionally removes only exam projects. It does **not** uninstall OpenShift Pipelines or NGINX Gateway Fabric, so you do not have to rebuild cluster-wide prerequisites after every practice attempt.
-
-## Objective alignment
-See `docs/OBJECTIVE-MAP.md` for the one-to-one coverage map against the published Red Hat EX288 (OCP 4.18) objectives. The mock was re-audited on 2026-09-08; overlapping tasks were consolidated so all 15 questions map to published objective areas.
-
-## Self-marking
-
-A read-only self-marker is included. Mark one question, selected questions, a range, or the whole mock:
-
-```bash
-./scripts/mark.sh 5
-./scripts/mark.sh 1 3 7
-./scripts/mark.sh 1-5
-./scripts/mark.sh all
-```
-
-See `docs/MARKING.md` for how PASS, FAIL, and WARN are interpreted.
+> **v8:** `docs/MOCK-EXAM.md` is the single question sheet: main Q1–Q8 followed immediately by **Supplemental Q9–Q12**.

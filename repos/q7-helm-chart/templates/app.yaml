@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: "{{ .Release.Name }}"}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector: {matchLabels: {app: "{{ .Release.Name }}"}}
+  template:
+    metadata: {labels: {app: "{{ .Release.Name }}"}}
+    spec:
+      volumes: [{name: shared, emptyDir: {}}]
+      containers:
+      - name: writer
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        command: ["/bin/sh","-c"]
+        args: ["while true; do echo '{{ .Values.message }}' > /shared/index.html; sleep 10; done"]
+        volumeMounts: [{name: shared, mountPath: /shared}]
+      - name: web
+        image: registry.access.redhat.com/ubi9/python-311:latest
+        command: ["python","-m","http.server","8080","--directory","/shared"]
+        ports: [{containerPort: 8080}]
+        volumeMounts: [{name: shared, mountPath: /shared}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: "{{ .Release.Name }}"}
+spec: {selector: {app: "{{ .Release.Name }}"}, ports: [{port: 8080, targetPort: 8080}]}
