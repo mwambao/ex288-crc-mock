@@ -3,6 +3,18 @@
 > Commands assume you replaced `<GIT_BASE>` with repositories reachable from CRC. Each command is preceded by a short comment explaining its purpose. Adapt image tags after `oc get is -n openshift` if your CRC differs.
 
 ## Q1 — Git + S2I
+
+### Option A — Web console
+1. In **Developer → Project → Create Project**, create `crimson`.
+2. Open **+Add → Import from Git**, enter `<GIT_BASE>/q1-pastebin.git`, and expand **Show advanced Git options** if needed.
+3. Under **Builder Image**, choose the Node.js builder corresponding to `nodejs:20-ubi9`. Set **Name** to `pastebin`.
+4. In **Build configuration / Environment variables**, add `npm_config_registry=https://registry.npmjs.org/`. Confirm the generated build uses **Source/S2I**, not Docker.
+5. Click **Create**. In **Topology**, open the `pastebin` component, then open **Resources → Builds** (or **Builds → BuildConfigs**) and follow the build log. If it fails, inspect the log before changing anything.
+6. From the component **Actions**, choose **Create Route** if a Route was not created automatically. Open the Route and verify the application.
+7. To rebuild, open **Builds → BuildConfigs → pastebin → Actions → Start build**. Verify the newest build succeeds.
+8. Use the **YAML** tab on the BuildConfig to confirm the Git URI, Source strategy, build environment, and output ImageStreamTag.
+
+### Option B — CLI
 ```bash
 # Create and select the project required by the task.
 oc new-project crimson
@@ -24,27 +36,117 @@ oc start-build pastebin --follow && oc get builds
 Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/building_applications/creating-applications and https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/builds_using_buildconfig/understanding-image-builds
 
 ## Q2 — Containerfile / Docker strategy
-```bash
-# Create the project; this question intentionally does not rely on setup.sh creating it.
-oc new-project container-build
-# Create the Docker-strategy build from Git.
-oc new-build <GIT_BASE>/q2-containerfile.git --name=container-app --strategy=docker
-# Point the Docker strategy at the non-default Containerfile path.
-oc patch bc/container-app --type=merge -p '{"spec":{"strategy":{"dockerStrategy":{"dockerfilePath":"container/Containerfile.exam","buildArgs":[{"name":"ARTIFACT_URL","value":"http://artifactory-mock.lab-infra.svc:8080/banner.txt"}]}}}}'
-# Ensure output is the exact requested ImageStreamTag.
-oc patch bc/container-app --type=merge -p '{"spec":{"output":{"to":{"kind":"ImageStreamTag","name":"container-app:1.0"}}}}'
-# Build and follow logs; this is where wrong strategy/path/artifact URL becomes visible.
-oc start-build container-app --follow
-# Deploy the built image stream tag.
-oc new-app container-app:1.0 --name=container-app
-# Configure deployment image-change automation from the requested tag.
-oc set triggers deployment/container-app --from-image=container-app:1.0 -c container-app
-# Expose and test.
-oc expose service container-app && curl -s http://$(oc get route container-app -o jsonpath='{.spec.host}')
+
+This question can be completed either with the **OpenShift web console** or the CLI. If the CLI does not detect the non-standard Containerfile cleanly, use **Option A (web console)**. This is also useful exam practice because EX288 expects you to be comfortable managing applications from the web console.
+
+### Option A — Web console (recommended fallback)
+
+1. **Create/select the project.** In the Developer perspective, open **Project → Create Project**, create `container-build`, and select it.
+2. Open **+Add → Import from Git** (the wording can also appear as **From Git** depending on console layout) and enter the Git URL for `q2-containerfile.git`.
+3. In **Import Strategy**, choose **Edit import strategy** and select **Dockerfile**. Do **not** allow the console to use Source/S2I for this question.
+4. Set the Dockerfile/Containerfile path to `container/Containerfile.exam`. Set the application/component name to `container-app`. Create the application. The important result is a `BuildConfig` whose strategy is `Docker` and whose `dockerfilePath` points at the supplied file.
+5. Open the created **BuildConfig `container-app`** and use its **YAML** view/editor. Under `spec.strategy.dockerStrategy`, make sure the following values exist. Also make sure the build output is `container-app:1.0`:
+
+```yaml
+spec:
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: container/Containerfile.exam
+      buildArgs:
+      - name: ARTIFACT_URL
+        value: http://artifactory-mock.lab-infra.svc:8080/banner.txt
+  output:
+    to:
+      kind: ImageStreamTag
+      name: container-app:1.0
 ```
-Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/builds_using_buildconfig/build-strategies and https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/building_applications/creating-applications
+
+6. Save the BuildConfig. From **Builds → BuildConfigs → container-app**, start a new build. Open the build logs and confirm that the non-default Containerfile and artifact URL are being used. If an earlier automatically-started build failed before you finished the configuration, that is okay; the **latest build** must succeed.
+7. In **Developer → +Add → Container images**, select **Image stream tag from internal registry**, choose project `container-build`, ImageStream `container-app`, tag `1.0`, and create the application as `container-app`. Ensure a Deployment and Service are created.
+8. From **Topology**, select `container-app` and create a Route (or use **Actions → Create Route**). Verify the application through the route.
+9. Finally inspect the Deployment YAML/details and confirm it has an image-change trigger for `container-app:1.0`. If the console-created deployment does not have one, use the CLI fallback below to add only that trigger.
+
+```bash
+# Add an ImageStream change trigger if the web-console deployment did not create one.
+oc set triggers deployment/container-app --from-image=container-app:1.0 -c container-app
+
+# Display the trigger so you can verify it before moving to the next question.
+oc set triggers deployment/container-app
+```
+
+### Option B — CLI
+
+```bash
+# Create the project required by the question.
+oc new-project container-build
+
+# Create a Docker-strategy BuildConfig from the supplied Git repository.
+# A first automatic build can fail because the Containerfile is deliberately not at the default path.
+oc new-build <GIT_BASE>/q2-containerfile.git --name=container-app --strategy=docker
+
+# Tell the Docker strategy where the non-default Containerfile is and pass the artifact URL as a build argument.
+oc patch bc/container-app --type=merge -p '{"spec":{"strategy":{"dockerStrategy":{"dockerfilePath":"container/Containerfile.exam","buildArgs":[{"name":"ARTIFACT_URL","value":"http://artifactory-mock.lab-infra.svc:8080/banner.txt"}]}}}}'
+
+# Make the successful build publish to the exact ImageStreamTag requested by the task.
+oc patch bc/container-app --type=merge -p '{"spec":{"output":{"to":{"kind":"ImageStreamTag","name":"container-app:1.0"}}}}'
+
+# Start a fresh build after the BuildConfig is fully configured and follow its logs.
+oc start-build container-app --follow
+
+# Deploy the image produced by the build.
+oc new-app container-app:1.0 --name=container-app
+
+# Configure automatic rollout when the ImageStreamTag changes.
+oc set triggers deployment/container-app --from-image=container-app:1.0 -c container-app
+
+# Expose the service with an OpenShift Route.
+oc expose service container-app
+
+# Verify the deployed application through the generated route.
+curl -s http://$(oc get route container-app -o jsonpath='{.spec.host}')
+```
+
+### Q2 verification / troubleshooting
+
+```bash
+# Confirm that this is a Docker build and that the custom Containerfile path is stored in the BuildConfig.
+oc get bc container-app -o jsonpath='{.spec.strategy.type}{"\n"}{.spec.strategy.dockerStrategy.dockerfilePath}{"\n"}'
+
+# Confirm the build argument used to reach the supplied Artifactory-style service.
+oc get bc container-app -o jsonpath='{.spec.strategy.dockerStrategy.buildArgs}{"\n"}'
+
+# Check the most recent builds before leaving the question.
+oc get builds
+
+# Inspect the ImageStream and confirm that tag 1.0 exists.
+oc get is container-app
+
+# Check rollout state and the route.
+oc rollout status deployment/container-app
+oc get route container-app
+```
+
+**Why the web-console route is valid:** OpenShift 4.18 supports creating applications from Git in the Developer perspective, lets you change the import strategy when a Dockerfile is present, and lets you specify a particular Dockerfile path. Docker BuildConfigs also support `dockerfilePath` and build arguments. If automatic detection chooses the wrong strategy, explicitly select Docker rather than relying on detection.
+
+References:
+- OpenShift 4.18 — Creating applications / Importing from Git: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/building_applications/creating-applications
+- OpenShift 4.18 — Builds using BuildConfig / Docker build strategy: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/builds_using_buildconfig/build-strategies
 
 ## Q3 — Customized S2I
+
+### Option A — Web console / UI-assisted
+> The OpenShift console can create and manage the S2I build, but the custom `.s2i/bin/assemble` file lives in Git. Edit/commit that supplied file with your Git web UI/editor first if your exam Git service provides one.
+
+1. Create project `s2i-custom` from **Developer → Project → Create Project**.
+2. Open **+Add → Import from Git** and enter `<GIT_BASE>/q3-custom-s2i.git`.
+3. Select the HTTPD builder matching the available `httpd:2.4-ubi9` ImageStreamTag and set the component name to `oxy`. Ensure **Source/S2I** is the selected strategy.
+4. In the build environment section add `PAGE_OWNER=developer`, then create the application.
+5. Open **Builds → BuildConfigs → oxy**, start a build, and inspect its logs. Look for `CUSTOM ASSEMBLE RUNNING`; this proves the repository's custom assemble script was used.
+6. In **Topology → oxy → Actions → Create Route**, expose the service. Open the Route and verify the generated content.
+7. Use the BuildConfig **YAML** tab to distinguish the persistent BuildConfig from individual Build objects shown in the **Builds** list.
+
+### Option B — CLI
 ```bash
 # Create the project for the customized S2I workload.
 oc new-project s2i-custom
@@ -64,6 +166,16 @@ oc expose service oxy && curl -s http://$(oc get route oxy -o jsonpath='{.spec.h
 Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/builds_using_buildconfig/build-strategies
 
 ## Q4 — ConfigMaps and Secrets
+
+### Option A — Web console
+1. Create project `acid`, then use **+Add → Import from Git** with `<GIT_BASE>/q4-config-app.git`; choose the Node.js S2I builder and name the component `phosphoric`.
+2. In the Developer perspective open **ConfigMaps → Create ConfigMap** and create `sedicen` with key `RESPONSE` and the required value.
+3. Open **Secrets → Create → Key/value secret** and create `phosphoric-secret` with key `API_TOKEN`.
+4. In **Topology**, select `phosphoric`, choose **Actions → Edit Deployment**, and add environment variables **from ConfigMap/Secret references**. If the form does not expose the needed reference type, use the Deployment **YAML** editor and add `envFrom` entries referencing `sedicen` and `phosphoric-secret`. Do not paste the secret value directly into the Deployment.
+5. Save and watch the rollout from **Topology/Pods**. Open the Deployment YAML and confirm the references are persisted.
+6. Edit `sedicen`, change `RESPONSE`, save it, then use **Actions → Restart rollout** on the Deployment because environment-variable based ConfigMap values are read when a new Pod starts. Verify the replacement Pod becomes Ready.
+
+### Option B — CLI
 ```bash
 # Create the application project.
 oc new-project acid
@@ -88,6 +200,17 @@ oc rollout restart deployment/phosphoric
 Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/building_applications/config-maps and https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/nodes/working-with-pods#nodes-pods-secrets
 
 ## Q5 — Health monitoring
+
+### Option A — Web console
+1. Create `health-lab`, import `<GIT_BASE>/q5-health-app.git` with the Node.js S2I builder, and name it `health-app`.
+2. In **Topology**, select the application and choose **Actions → Add Health Checks** (or edit the Deployment and locate **Health checks**).
+3. Add the **startup probe** as an HTTP GET to `/startup` on port `8080`. Translate the question's startup budget into the requested period/failure threshold and set the timeout.
+4. Add the **liveness probe** as HTTP GET `/` on port `8080`; enter the required initial delay, period, timeout, and failure threshold from the task description.
+5. Add the **readiness probe** as HTTP GET `/ready` on port `8080`; configure its separate timing/failure settings.
+6. Save. Open **Pods → health-app pod → Events** and **Logs** to diagnose failures. A bad readiness probe normally prevents the Pod becoming Ready; a repeatedly failing liveness/startup probe can cause restarts.
+7. Open **Deployment → YAML** and verify `startupProbe`, `livenessProbe`, and `readinessProbe` are stored in the pod template so they survive replacement Pods.
+
+### Option B — CLI
 ```bash
 # Create project and deploy the supplied health-aware app.
 oc new-project health-lab
@@ -107,6 +230,19 @@ oc rollout status deployment/health-app
 Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/applications/application-health
 
 ## Q6 — Templates
+
+### Option A — Web console / UI-assisted
+> Template processing is often faster and less error-prone with `oc process`, especially when the task explicitly requires `-l`. The console is still useful for importing, inspecting and instantiating templates.
+
+1. Create project `templating`. Obtain the supplied `build-template.yaml` and `deploy-template.yaml` from Git.
+2. Use **+Add → Import YAML** and paste/apply the build Template object. Repeat for the deploy Template.
+3. Open **Search**, select resource type **Template**, and inspect each template's YAML/parameters. Confirm the expected parameter defaults and required fields before instantiating it.
+4. Use **+Add → Developer Catalog** and locate the imported template if your console exposes project templates there. Enter the required build parameters and create the build resources.
+5. Inspect the generated BuildConfig under **Builds → BuildConfigs**, start the build if necessary, and wait for success.
+6. Instantiate the deployment template with the required values. Because this exercise explicitly requires labels equivalent to `oc process ... -l exam=ex288,component=...`, verify the generated objects in YAML and add the required labels through **Edit labels** or the YAML editor if the template-instantiation form does not provide them.
+7. In **Topology**, verify two replicas and create/open the Route. Use **Search → Resources** with labels to verify the build/deploy resources carry the required labels.
+
+### Option B — CLI
 ```bash
 # Create the target project.
 oc new-project templating
@@ -127,6 +263,19 @@ oc expose service templated-app
 Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/building_applications/creating-applications
 
 ## Q7 — Helm multi-container
+
+### Option A — Web console / UI-assisted
+> For a chart supplied as files in Git, `helm lint`, `helm template`, and installing the local chart are normally CLI operations. The OpenShift console is very useful for managing and verifying the Helm release after installation; if the chart is published in the Developer Catalog, it can also be installed entirely from the UI.
+
+1. Create project `helm-multi`. If the chart is available in **Developer → +Add → Helm Chart**, select it; otherwise perform the initial local-chart install with the CLI option below.
+2. In the Helm install form set release name `dualweb`, `message=first-value`, and the requested replica count/other values. Use **YAML view** if the form does not expose a value directly.
+3. After installation open **Developer → Helm**, select release `dualweb`, and inspect **Resources**. Open a Pod and verify that both expected containers exist and share the expected volume.
+4. Choose **Upgrade** for the release, change `message` to `second-value` and `replicaCount` to `2`, then apply the upgrade.
+5. Open **Revision History** for the release and inspect the new revision/effective values.
+6. Use **Rollback** to return to revision 1 and verify the Deployment becomes healthy again.
+7. Inspect the Deployment YAML after each operation to connect Helm values with the rendered OpenShift resources.
+
+### Option B — CLI
 ```bash
 # Create target project.
 oc new-project helm-multi
@@ -148,6 +297,17 @@ helm rollback dualweb 1 && oc rollout status deployment/dualweb
 Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/building_applications/working-with-helm-charts
 
 ## Q8 — Pipelines and PipelineRuns
+
+### Option A — Web console
+1. Create project `cicd`. In **Developer → Pipelines**, use **Create → Pipeline** or **Import YAML** to create the supplied `build` and `deploy` Pipeline definitions from Git.
+2. Open each Pipeline and inspect its **Pipeline details/YAML** to identify required parameters before starting a run.
+3. Open Pipeline `build` and choose **Actions → Start**. Supply `IMAGE=image-registry.openshift-image-registry.svc:5000/cicd/pipeline-app:latest`, then start the PipelineRun.
+4. Open the PipelineRun graphical view. Select each Task to inspect status and logs. Do not start the deploy Pipeline until the build PipelineRun succeeds.
+5. Open Pipeline `deploy`, choose **Start**, supply `APP_NAME=pipeline-app`, and run it. Verify the resulting application resources in **Topology**.
+6. Under **Pipelines → PipelineRuns**, review run history. For a failed run, open the failed TaskRun and read **Logs**, **Events**, and the PipelineRun **YAML/status.conditions** to identify the actual failure rather than recreating resources blindly.
+7. Start another run after correcting the problem and confirm the previous run remains in history.
+
+### Option B — CLI
 ```bash
 # Create the CI/CD project.
 oc new-project cicd
@@ -183,118 +343,3 @@ oc get pipelineruns
 tkn pipelinerun list
 ```
 Reference: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/latest/html/creating_cicd_pipelines/creating-applications-with-cicd-pipelines
-
-
----
-
-# Supplemental question solutions
-
-## Supplemental Q9 — Kustomize
-
-```bash
-# Create a separate project for the supplemental Kustomize exercise.
-oc new-project kustomize-extra
-
-# Render the development overlay locally before changing the cluster.
-oc kustomize ./q9-kustomize/overlays/dev
-
-# Apply the overlay using the Kustomize support built into oc.
-oc apply -k ./q9-kustomize/overlays/dev
-
-# Verify the resulting replica count and labels.
-oc get deployment -o wide --show-labels
-```
-Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/cli_tools/openshift-cli-oc
-
-## Supplemental Q10 — Build hooks and triggers
-
-```bash
-# Create an isolated project for hook and trigger practice.
-oc new-project build-hooks-extra
-
-# Inspect the BuildConfig before modifying its hooks or triggers.
-oc get bc -o yaml
-
-# Discover the supported post-commit fields from the API schema.
-oc explain buildconfig.spec.postCommit --recursive
-
-# Start a build and follow its output so the hook result is visible.
-oc start-build <buildconfig-name> --follow
-
-# List builds, then inspect a build to identify its trigger cause and failure details.
-oc get builds
-oc describe build/<build-name>
-
-# Read the build log when diagnosing the build or post-commit command.
-oc logs build/<build-name>
-```
-Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/builds_using_buildconfig/triggering-builds-build-hooks
-
-## Supplemental Q11 — OpenShift internal registry
-
-```bash
-# Inspect whether the integrated registry default route is enabled.
-oc get configs.imageregistry.operator.openshift.io cluster -o jsonpath='{.spec.defaultRoute}{"\\n"}'
-
-# Obtain the external registry hostname from OpenShift instead of hard-coding it.
-REGISTRY=$(oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}')
-
-# Obtain the token for the currently authenticated OpenShift user.
-TOKEN=$(oc whoami -t)
-
-# Authenticate Podman to the OpenShift registry using the OpenShift identity and token.
-podman login -u "$(oc whoami)" -p "$TOKEN" "$REGISTRY"
-
-# Tag a local image using registry/project/ImageStream:tag addressing.
-podman tag <local-image> "$REGISTRY/<project>/<imagestream>:practice"
-
-# Push the image into the OpenShift integrated registry.
-podman push "$REGISTRY/<project>/<imagestream>:practice"
-
-# Verify that OpenShift records the pushed image and tag.
-oc get is,istag
-
-# Pull the image back to verify registry access in the opposite direction.
-podman pull "$REGISTRY/<project>/<imagestream>:practice"
-```
-Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/registry/accessing-the-registry
-
-## Supplemental Q12 — Installed Operator
-
-```bash
-# Create the project that will contain the Operator custom resource.
-oc new-project operator-extra
-
-# Discover the NginxGatewayFabric API instead of relying on memorized YAML.
-oc api-resources | grep -i nginxgatewayfabric
-
-# Inspect the resource and its spec schema.
-oc explain nginxgatewayfabric
-oc explain nginxgatewayfabric.spec
-
-# Create the minimum valid custom resource previously validated on this CRC lab.
-cat > /tmp/practice-gateway.yaml <<'YAML'
-apiVersion: gateway.nginx.org/v1alpha1
-kind: NginxGatewayFabric
-metadata:
-  name: practice-gateway
-  namespace: operator-extra
-spec: {}
-YAML
-
-# Submit the custom resource so the installed Operator can reconcile it.
-oc apply -f /tmp/practice-gateway.yaml
-
-# Check reconciliation conditions; Initialized and Deployed should become True.
-oc get nginxgatewayfabric practice-gateway -o jsonpath='{range .status.conditions[*]}{.type}{" => "}{.status}{" "}{.reason}{"\\n"}{end}'
-
-# Inspect workloads and services created by the Operator.
-oc get deployment,service,serviceaccount -n operator-extra
-
-# Inspect related NGINX custom resources created by the Operator-managed installation.
-oc get nginxgateway,nginxproxy -n operator-extra
-
-# Review events if reconciliation does not complete successfully.
-oc get events -n operator-extra --sort-by=.lastTimestamp
-```
-Reference: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/operators/understanding-operators
