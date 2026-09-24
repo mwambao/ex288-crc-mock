@@ -404,57 +404,118 @@ Reference: OpenShift 4.18 CLI/Kustomize documentation: https://docs.redhat.com/e
 
 ## Supplemental Q10 — Build hooks and triggers
 
+**Resources used by this solution**
+
+- Git repository: `https://github.com/mwambao/ex288-crc-mock.git`
+- Git context directory: `repos/q10-build-hooks`
+- Project: `build-hooks-extra`
+- Application / BuildConfig: `hook-app`
+- Required post-commit script: `./validate.sh`
+- Expected hook output: `POST-COMMIT VALIDATION PASSED`
+
+Before starting, push the updated `repos/q10-build-hooks` directory supplied in this package to the Git repository above. This is important: **do not use Q1, Q3, or another repository for Q10.**
+
 ### Option A — Web Console / UI-assisted
 
 1. In **Developer → Project → Create Project**, create `build-hooks-extra`.
-2. Use **Developer → +Add → Import from Git**. Enter the supplied Git repository, allow OpenShift to detect the appropriate S2I builder, set the application/name required by the exercise, and create the resources. If automatic detection is wrong, use **Edit import strategy** and explicitly select the builder/import strategy.
-3. Switch to **Administrator → Builds → BuildConfigs**, open the BuildConfig, and select **YAML**. Locate `spec.postCommit`. Add the supplied validation command/script. Also inspect `spec.triggers`; add or correct the required `ConfigChange`, `GitHub`, `Generic`, or `ImageChange` trigger without deleting/recreating the BuildConfig.
-4. Save the BuildConfig. From its **Actions** menu choose **Start build**. Open the resulting Build and select **Logs**. Confirm the normal image build succeeds and then locate the output from the post-commit validation script.
-5. Make the requested configuration/source change. Return to **Builds → Builds**, open the newly triggered build, and inspect **Details/YAML**. Under the build status/cause information identify which trigger caused it.
-6. For the deliberately broken hook/trigger, open the failed Build and inspect **Logs**, **Events**, and **YAML**. Compare the command in `spec.postCommit` and the trigger configuration with the supplied files. Correct the BuildConfig YAML, save it, start/trigger another build, and verify that the newest build succeeds.
+2. Go to **Developer → +Add → Import from Git** and enter `https://github.com/mwambao/ex288-crc-mock.git`. Expand the Git options and set **Context dir** to `repos/q10-build-hooks`. Under **Import Strategy**, choose the Node.js builder (for example `nodejs:20-ubi9`) and ensure the application/resource name is `hook-app`. Create the application.
+3. Switch to **Administrator → Builds → BuildConfigs → hook-app → YAML**. Verify `spec.source.git.uri` is exactly `https://github.com/mwambao/ex288-crc-mock.git` and `spec.source.contextDir` is `repos/q10-build-hooks`. Add the post-commit hook:
+
+```yaml
+spec:
+  postCommit:
+    script: ./validate.sh
+```
+
+4. In the same BuildConfig YAML, inspect `spec.triggers`. If a Generic trigger already exists, keep it. If it does not, add one. The easiest reliable way to generate/manage the webhook secret is the terminal command `oc set triggers bc/hook-app --from-generic`; then return to the console and inspect the resulting BuildConfig YAML. From the BuildConfig page, inspect the webhook information where available.
+5. Use **Actions → Start build**. Open the new Build → **Logs** and verify the final part of the log contains `POST-COMMIT VALIDATION PASSED`. This proves the hook ran inside the newly built image.
+6. In your Git checkout, make a harmless edit to `repos/q10-build-hooks/server.js`, commit it and push it. Use the terminal to obtain/invoke the Generic webhook URL (the console is useful for inspection, but invoking the webhook is more reliable from a terminal). Return to **Builds → Builds**, open the new Build and inspect **Details/YAML** for the build cause showing a Generic webhook.
+7. To practise failure diagnosis, edit the BuildConfig YAML and temporarily change `postCommit.script` to `./missing-validate.sh`. Start a build. Open the failed Build → **Logs** and **Events** and identify the missing command/script as the reason. Restore `./validate.sh`, save, and run one final build.
+8. Confirm the newest Build is **Complete**, its logs contain the success text, and the BuildConfig still has the exact Git URI/context directory.
 
 ### Option B — CLI
 
 ```bash
-# Create an isolated project for the build-hook exercise.
+# Create the project required by Q10.
 oc new-project build-hooks-extra
 
-# Create the S2I application/BuildConfig from the supplied Git repository; substitute the repository URL supplied by your lab.
-oc new-app <builder-image>~<git-repository> --name=<application-name>
+# Create an S2I BuildConfig from the EXACT Git repository and Q10 context directory.
+# The ~ syntax explicitly combines the Node.js builder with the Git source.
+oc new-app nodejs:20-ubi9~https://github.com/mwambao/ex288-crc-mock.git \
+  --context-dir=repos/q10-build-hooks \
+  --name=hook-app
 
-# Inspect the BuildConfig before changing it so you can see the existing strategy, source, output and triggers.
-oc get bc/<application-name> -o yaml
+# Verify the BuildConfig is using the exact Git URI and context directory before continuing.
+oc get bc/hook-app -o jsonpath='{.spec.source.git.uri}{"\n"}{.spec.source.contextDir}{"\n"}'
 
-# Ask the API for the exact post-commit schema instead of relying on memory.
-oc explain buildconfig.spec.postCommit --recursive
+# Configure the supplied validation script as a post-commit hook.
+# The hook runs after the image is built but before the image is pushed.
+oc set build-hook bc/hook-app --post-commit --script='./validate.sh'
 
-# Configure a post-commit script; replace the script with the validation command supplied by the exercise.
-oc set build-hook bc/<application-name> --post-commit --script='<supplied-validation-command>'
+# Ensure the BuildConfig has a Generic webhook trigger without recreating it.
+oc set triggers bc/hook-app --from-generic
 
-# Inspect the configured hook and all triggers after modification.
-oc get bc/<application-name> -o yaml
+# Inspect the BuildConfig so you can see the postCommit section and trigger definitions.
+oc get bc/hook-app -o yaml
 
-# Start a build manually and follow its complete log so the post-commit output is visible at the end.
-oc start-build <application-name> --follow
+# Start a controlled build and follow the log to the end.
+oc start-build hook-app --follow
 
-# List builds in creation order so you can identify the newest Build object.
+# Prove the validation hook ran successfully in the most recent build.
+oc logs build/$(oc get builds -l buildconfig=hook-app --sort-by=.metadata.creationTimestamp -o name | tail -1 | cut -d/ -f2) | grep 'POST-COMMIT VALIDATION PASSED'
+
+# Display the Generic webhook URL generated for this BuildConfig.
+oc describe bc/hook-app | sed -n '/Webhook Generic/,+3p'
+
+# In your local clone, make a harmless source change in the Q10 source directory.
+cd repos/q10-build-hooks
+printf '\n// q10 webhook rebuild practice\n' >> server.js
+
+# Record and publish the source change so the remote Git repository contains it.
+git add server.js
+git commit -m 'Q10 trigger practice change'
+git push
+
+# Obtain the Generic webhook URL. Copy the URL printed by this command.
+oc describe bc/hook-app | sed -n '/Webhook Generic/,+3p'
+
+# Invoke that Generic webhook URL with POST. Replace <GENERIC-WEBHOOK-URL> with the URL above.
+# This causes OpenShift to create another Build from the now-updated Git source.
+curl -k -X POST '<GENERIC-WEBHOOK-URL>'
+
+# List builds in chronological order and identify the build created by the webhook.
 oc get builds --sort-by=.metadata.creationTimestamp
 
-# Describe the newest build to inspect its status and the cause/trigger recorded by OpenShift.
-oc describe build/<build-name>
+# Inspect the newest Build and identify its recorded trigger/cause.
+LATEST=$(oc get builds -l buildconfig=hook-app --sort-by=.metadata.creationTimestamp -o name | tail -1 | cut -d/ -f2)
+oc describe build/$LATEST
+oc get build/$LATEST -o yaml
 
-# Read the Build object's YAML when you need the exact trigger cause fields.
-oc get build/<build-name> -o yaml
+# Deliberately configure an invalid hook so you can practise diagnosing a failed post-commit hook.
+oc set build-hook bc/hook-app --post-commit --script='./missing-validate.sh'
 
-# Read the failed build log when diagnosing an incorrect hook command or build failure.
-oc logs build/<build-name>
+# Start the deliberately broken build. A non-zero result here is expected.
+oc start-build hook-app --follow || true
 
-# If the hook command is deliberately wrong, replace it with the correct supplied validation command.
-oc set build-hook bc/<application-name> --post-commit --script='<correct-validation-command>'
+# Find the newest failed Build and inspect both its description and log.
+FAILED=$(oc get builds -l buildconfig=hook-app --sort-by=.metadata.creationTimestamp -o name | tail -1 | cut -d/ -f2)
+oc describe build/$FAILED
+oc logs build/$FAILED
 
-# Start another build and verify that both the image build and post-commit hook now succeed.
-oc start-build <application-name> --follow
+# Restore the correct supplied validation script.
+oc set build-hook bc/hook-app --post-commit --script='./validate.sh'
+
+# Run the final verification build and follow it until completion.
+oc start-build hook-app --follow
+
+# Verify the newest build completed successfully.
+oc get builds -l buildconfig=hook-app --sort-by=.metadata.creationTimestamp
+
+# Confirm the BuildConfig still points at the required repository and context directory.
+oc get bc/hook-app -o jsonpath='{.spec.source.git.uri}{"\n"}{.spec.source.contextDir}{"\n"}'
 ```
+
+**Why this exercise matters:** a post-commit hook executes in a temporary container based on the build output image. If the hook exits non-zero, OpenShift marks the build failed and does not push the output image. BuildConfig triggers control when new Build objects are created; OpenShift supports webhook, image-change and configuration-change triggers. citeturn0search0turn0search2
 
 Reference: OpenShift 4.18 build triggers and build hooks: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/builds_using_buildconfig/triggering-builds-build-hooks
 

@@ -92,44 +92,36 @@ Pipeline definitions are supplied in Git under `repos/q8-pipelines/build-pipelin
 - Use `oc` and, where available, `tkn` to inspect PipelineRuns, TaskRuns, logs, task ordering, parameters, and failure reasons; correct a bad run by creating a corrected PipelineRun rather than editing a completed run.
 - Demonstrate repeatability by starting a second build/deploy cycle and show the history of PipelineRuns.
 
+
 ---
 
-# Supplemental questions — complete these after Q1–Q8
-
-The eight questions above form the main timed remediation mock. The questions below are **SUPPLEMENTAL**, but they remain part of this same exam document so that they are not missed during revision. They cover additional skills named in the public EX288 objectives.
+# Supplemental questions — published objective coverage
 
 ## Supplemental Q9 — Kustomize
 
-- Create project `kustomize-extra` yourself.
-- From the supplied Kustomize files, identify the base Deployment and Service and inspect them before applying anything.
-- Create/use a development overlay that changes the Deployment replica count and adds environment-specific labels without modifying the base resources.
-- Render the overlay with `oc kustomize` and inspect the generated YAML before deployment.
-- Apply the overlay with `oc apply -k`, then verify the expected replicas and labels exist in the project.
-- Make one further overlay-only change, reapply it, and verify the base remains unchanged.
+Use the supplied Kustomize resources to practise base/overlay rendering and deployment.
 
 ## Supplemental Q10 — Build hooks and triggers
 
-- Create project `build-hooks-extra` yourself and create an S2I BuildConfig from the supplied Git application.
-- Configure a post-commit build hook that executes the supplied validation script after a successful image build.
-- Inspect the BuildConfig triggers and configure/manage an appropriate source or configuration trigger without recreating the BuildConfig.
-- Start a build, follow its logs, and prove from the build output that the post-commit hook executed successfully.
-- Make a configuration/source change that causes another build through the configured trigger and identify the trigger cause from the Build object.
-- Use `oc describe build` and build logs to diagnose a deliberately incorrect hook command or trigger configuration, then correct it.
+**Exact Git repository:** `https://github.com/mwambao/ex288-crc-mock.git`  
+**Context directory:** `repos/q10-build-hooks`  
+**Application / BuildConfig name:** `hook-app`  
+**Project:** `build-hooks-extra`  
+**Builder:** an available OpenShift Node.js S2I ImageStreamTag, for example `nodejs:20-ubi9`.
+
+> Before attempting this question, make sure the updated `repos/q10-build-hooks` directory from this package has been committed and pushed to the Git repository above. The question deliberately uses a context directory inside the repository rather than a separate Git repository.
+
+- Create project `build-hooks-extra` yourself and create an S2I BuildConfig named `hook-app` from `https://github.com/mwambao/ex288-crc-mock.git`, using context directory `repos/q10-build-hooks`.
+- Configure a **post-commit build hook** that executes `./validate.sh`. A successful build must contain `POST-COMMIT VALIDATION PASSED` in its build log.
+- Inspect the BuildConfig triggers and configure a **Generic webhook trigger** without deleting or recreating the BuildConfig. Display/copy the generated webhook URL.
+- Make a harmless source change in `repos/q10-build-hooks/server.js`, commit and push it, then invoke the Generic webhook so OpenShift creates another build from the updated Git source. Identify the trigger cause from the resulting Build object.
+- Deliberately change the hook command to `./missing-validate.sh`, start a build, use the Build status/description and logs to explain why it failed, then restore the correct `./validate.sh` hook.
+- Start/trigger one final build and prove that the newest build is `Complete`, the hook executed successfully, and the BuildConfig still points to the exact Git repository and context directory specified above.
 
 ## Supplemental Q11 — OpenShift internal registry
 
-- Using an account with sufficient privileges, inspect the OpenShift integrated image registry and determine whether its default external route is enabled.
-- Enable or use the registry route as required and determine its hostname without hard-coding it.
-- Authenticate Podman to the registry using your OpenShift identity/token.
-- Tag and push a supplied/local practice image into an ImageStreamTag in a project you create yourself.
-- Verify the resulting ImageStream/ImageStreamTag from OpenShift, then pull the same image back with Podman.
-- Demonstrate the relationship between the registry repository path, project name, ImageStream name, and image tag.
+Practise exposing/accessing the integrated registry, authenticating with an OpenShift token, and pulling/pushing an image with Podman.
 
 ## Supplemental Q12 — Application from an installed Operator
 
-- Create project `operator-extra` yourself and use `oc api-resources`, `oc explain`, and CRD inspection to discover the installed `NginxGatewayFabric` API rather than relying on memorized YAML.
-- Determine the correct API group/version, kind, and minimum valid specification for the custom resource.
-- Create an `NginxGatewayFabric` custom resource named `practice-gateway` using the minimum valid configuration.
-- Verify that the Operator reports successful initialization/deployment through the custom resource status.
-- Identify at least three resources created and managed as a consequence of the custom resource, without manually creating those managed resources.
-- Use events, the custom-resource status, and Operator-managed workload status to troubleshoot reconciliation if it does not complete successfully.
+Practise discovering an installed Operator API, creating a minimal custom resource, and verifying its status and managed resources.
