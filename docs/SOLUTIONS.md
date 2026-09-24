@@ -343,3 +343,235 @@ oc get pipelineruns
 tkn pipelinerun list
 ```
 Reference: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/latest/html/creating_cicd_pipelines/creating-applications-with-cicd-pipelines
+
+---
+
+# Supplemental objective solutions
+
+The following four solutions correspond to Supplemental Q9-Q12. Each includes a Web Console/UI-assisted path and a CLI path. Where the OpenShift console cannot replace a local tool such as `oc kustomize` or Podman, the UI path explicitly calls that out.
+
+## Supplemental Q9 — Kustomize
+
+### Option A — Web Console / UI-assisted
+
+Kustomize is primarily a file/CLI workflow. Use the Web Console to inspect and verify the objects, while using a terminal for rendering/applying the supplied Kustomize files.
+
+1. In the OpenShift Web Console, switch to **Developer** perspective and use **Project → Create Project**. Create `kustomize-extra`.
+2. In a terminal, inspect the supplied `base/kustomization.yaml`, Deployment, Service, and `overlays/dev/kustomization.yaml`. Do not modify the base to satisfy an environment-specific requirement.
+3. Render the development overlay with `oc kustomize <overlay-directory>`. Inspect the generated Deployment and Service before applying them.
+4. Apply the overlay with `oc apply -k <overlay-directory>`.
+5. Return to **Developer → Topology** and select the workload. Open **Resources** and **YAML** to verify the Deployment replica count and the environment-specific labels added by the overlay.
+6. Make the requested change only in the overlay, render and apply it again, then use **Administrator → Workloads → Deployments → YAML** (or **Search**) to verify the new value. Finally inspect the original base files in your terminal and confirm they were not changed.
+
+### Option B — CLI
+
+```bash
+# Create the project yourself because the supplemental task does not pre-create it.
+oc new-project kustomize-extra
+
+# Inspect the base definition before applying anything so you know what the overlay is changing.
+cat q9-kustomize/base/kustomization.yaml
+
+# Inspect the development overlay separately; environment-specific changes belong here rather than in the base.
+cat q9-kustomize/overlays/dev/kustomization.yaml
+
+# Render the overlay locally first so you can catch an incorrect patch, label, or replica count before changing the cluster.
+oc kustomize q9-kustomize/overlays/dev
+
+# Apply the rendered development overlay using oc's built-in Kustomize support.
+oc apply -k q9-kustomize/overlays/dev
+
+# Verify the Deployment replica count after the overlay has been applied.
+oc get deployment -o custom-columns=NAME:.metadata.name,DESIRED:.spec.replicas,READY:.status.readyReplicas
+
+# Display labels on the resulting objects to prove the overlay added the required environment-specific labels.
+oc get deployment,service --show-labels
+
+# After making the second overlay-only change, render it again before applying it.
+oc kustomize q9-kustomize/overlays/dev
+
+# Reapply the changed overlay without recreating the resources manually.
+oc apply -k q9-kustomize/overlays/dev
+
+# Verify the live resources after the second application.
+oc get deployment,service --show-labels
+
+# Use Git status/diff, when the supplied files are in a Git repository, to prove the base was not modified.
+git diff -- q9-kustomize/base q9-kustomize/overlays/dev
+```
+
+Reference: OpenShift 4.18 CLI/Kustomize documentation: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/cli_tools/openshift-cli-oc
+
+## Supplemental Q10 — Build hooks and triggers
+
+### Option A — Web Console / UI-assisted
+
+1. In **Developer → Project → Create Project**, create `build-hooks-extra`.
+2. Use **Developer → +Add → Import from Git**. Enter the supplied Git repository, allow OpenShift to detect the appropriate S2I builder, set the application/name required by the exercise, and create the resources. If automatic detection is wrong, use **Edit import strategy** and explicitly select the builder/import strategy.
+3. Switch to **Administrator → Builds → BuildConfigs**, open the BuildConfig, and select **YAML**. Locate `spec.postCommit`. Add the supplied validation command/script. Also inspect `spec.triggers`; add or correct the required `ConfigChange`, `GitHub`, `Generic`, or `ImageChange` trigger without deleting/recreating the BuildConfig.
+4. Save the BuildConfig. From its **Actions** menu choose **Start build**. Open the resulting Build and select **Logs**. Confirm the normal image build succeeds and then locate the output from the post-commit validation script.
+5. Make the requested configuration/source change. Return to **Builds → Builds**, open the newly triggered build, and inspect **Details/YAML**. Under the build status/cause information identify which trigger caused it.
+6. For the deliberately broken hook/trigger, open the failed Build and inspect **Logs**, **Events**, and **YAML**. Compare the command in `spec.postCommit` and the trigger configuration with the supplied files. Correct the BuildConfig YAML, save it, start/trigger another build, and verify that the newest build succeeds.
+
+### Option B — CLI
+
+```bash
+# Create an isolated project for the build-hook exercise.
+oc new-project build-hooks-extra
+
+# Create the S2I application/BuildConfig from the supplied Git repository; substitute the repository URL supplied by your lab.
+oc new-app <builder-image>~<git-repository> --name=<application-name>
+
+# Inspect the BuildConfig before changing it so you can see the existing strategy, source, output and triggers.
+oc get bc/<application-name> -o yaml
+
+# Ask the API for the exact post-commit schema instead of relying on memory.
+oc explain buildconfig.spec.postCommit --recursive
+
+# Configure a post-commit script; replace the script with the validation command supplied by the exercise.
+oc set build-hook bc/<application-name> --post-commit --script='<supplied-validation-command>'
+
+# Inspect the configured hook and all triggers after modification.
+oc get bc/<application-name> -o yaml
+
+# Start a build manually and follow its complete log so the post-commit output is visible at the end.
+oc start-build <application-name> --follow
+
+# List builds in creation order so you can identify the newest Build object.
+oc get builds --sort-by=.metadata.creationTimestamp
+
+# Describe the newest build to inspect its status and the cause/trigger recorded by OpenShift.
+oc describe build/<build-name>
+
+# Read the Build object's YAML when you need the exact trigger cause fields.
+oc get build/<build-name> -o yaml
+
+# Read the failed build log when diagnosing an incorrect hook command or build failure.
+oc logs build/<build-name>
+
+# If the hook command is deliberately wrong, replace it with the correct supplied validation command.
+oc set build-hook bc/<application-name> --post-commit --script='<correct-validation-command>'
+
+# Start another build and verify that both the image build and post-commit hook now succeed.
+oc start-build <application-name> --follow
+```
+
+Reference: OpenShift 4.18 build triggers and build hooks: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/builds_using_buildconfig/triggering-builds-build-hooks
+
+## Supplemental Q11 — OpenShift internal registry
+
+### Option A — Web Console / UI-assisted
+
+The Web Console can configure and inspect the integrated registry, but the required Podman login/push/pull operations still need a terminal.
+
+1. Log in with the account that has the required administrative privileges. Switch to **Administrator** perspective.
+2. Open **Administration → CustomResourceDefinitions**, search for `configs.imageregistry.operator.openshift.io`, open it, select the `cluster` instance, and choose **YAML**. Inspect `spec.defaultRoute`.
+3. If the task requires the default external route and it is disabled, set `spec.defaultRoute: true` and save. Then open **Networking → Routes**, select project `openshift-image-registry`, and identify the `default-route` hostname. Do not hard-code the hostname.
+4. Create the target application project from **Home → Projects → Create Project** if required. In a terminal obtain your token with `oc whoami -t`, then authenticate Podman to the hostname discovered in the console.
+5. In the terminal tag the supplied/local image using `<registry-host>/<project>/<imagestream>:<tag>` and push it. Back in the Web Console, use **Search** and select **ImageStream** to verify the ImageStream and tag were created/updated.
+6. Remove or use a differently named local copy if useful, then pull the same registry path with Podman. In the console inspect the ImageStream YAML/status to connect the external repository path with the OpenShift project, ImageStream name and tag.
+
+### Option B — CLI
+
+```bash
+# Inspect whether the OpenShift integrated registry currently exposes its default external route.
+oc get configs.imageregistry.operator.openshift.io/cluster -o jsonpath='{.spec.defaultRoute}{"\n"}'
+
+# Enable the default registry route when the task requires it and your account has sufficient privilege.
+oc patch configs.imageregistry.operator.openshift.io/cluster --type=merge -p '{"spec":{"defaultRoute":true}}'
+
+# Read the generated route hostname dynamically rather than memorizing a CRC-specific hostname.
+REGISTRY=$(oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}')
+
+# Display the hostname so you can verify what Podman will contact.
+echo "$REGISTRY"
+
+# Create/select the project that will own the ImageStream repository when required by the task.
+oc new-project <project-name>
+
+# Obtain the token for the currently authenticated OpenShift identity.
+TOKEN=$(oc whoami -t)
+
+# Authenticate Podman to the integrated registry with your OpenShift username and token.
+podman login -u "$(oc whoami)" -p "$TOKEN" "$REGISTRY"
+
+# Tag the supplied/local image using registry/project/ImageStream:tag naming.
+podman tag <local-image> "$REGISTRY/<project-name>/<imagestream-name>:<tag>"
+
+# Push the image into the OpenShift project's registry repository.
+podman push "$REGISTRY/<project-name>/<imagestream-name>:<tag>"
+
+# Verify the ImageStream and ImageStreamTag that OpenShift recorded after the push.
+oc get imagestream,imagestreamtag
+
+# Inspect the ImageStream in detail to connect its tags/digests with the pushed registry repository.
+oc describe imagestream/<imagestream-name>
+
+# Pull the exact same project/ImageStream:tag back through the external registry route.
+podman pull "$REGISTRY/<project-name>/<imagestream-name>:<tag>"
+```
+
+Reference: OpenShift 4.18 integrated registry access: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/registry/accessing-the-registry
+
+## Supplemental Q12 — Application from an installed Operator
+
+### Option A — Web Console
+
+1. Create project `operator-extra` using **Home → Projects → Create Project**.
+2. Open **Operators → Installed Operators**. Select the installed **NGINX Gateway Fabric** Operator and inspect its **Provided APIs**. Find `NginxGatewayFabric`; this confirms the Operator/API is actually installed rather than assuming it exists.
+3. Select **NginxGatewayFabric → Create NginxGatewayFabric** and switch to **YAML view**. Verify the displayed `apiVersion` and `kind`. Create a resource named `practice-gateway` in `operator-extra` using the minimum valid specification (`spec: {}` in this validated CRC lab).
+4. Open the created `practice-gateway` custom resource and inspect **Details**, **YAML**, **Conditions**, and **Events**. Wait for the Operator to report successful initialization/deployment.
+5. Use **Search** in Administrator perspective. Filter to project `operator-extra` and inspect Deployments, Services, ServiceAccounts and related NGINX custom resources. Identify at least three resources created by the Operator; do not create these managed resources yourself.
+6. If reconciliation fails, inspect the custom resource **Conditions/Events**, then open the Operator-managed Deployment/Pods and inspect **Events** and **Logs**. Also check **Operators → Installed Operators → NGINX Gateway Fabric → Subscription/ClusterServiceVersion** to distinguish a CR problem from an unhealthy Operator installation.
+
+### Option B — CLI
+
+```bash
+# Create the project that will contain the Operator custom resource.
+oc new-project operator-extra
+
+# Discover the installed API instead of relying on memorized resource names.
+oc api-resources | grep -i nginxgatewayfabric
+
+# Inspect the top-level resource schema to learn its group/version/kind and available fields.
+oc explain nginxgatewayfabric
+
+# Inspect the spec recursively so you can determine which fields are required/available on this installed Operator version.
+oc explain nginxgatewayfabric.spec --recursive
+
+# Inspect the CRD itself when you need the exact served versions or validation schema.
+oc get crd nginxgatewayfabrics.gateway.nginx.org -o yaml
+
+# Create the minimum custom resource validated for this CRC Operator installation.
+cat > /tmp/practice-gateway.yaml <<'YAML'
+apiVersion: gateway.nginx.org/v1alpha1
+kind: NginxGatewayFabric
+metadata:
+  name: practice-gateway
+  namespace: operator-extra
+spec: {}
+YAML
+
+# Submit the custom resource and let the installed Operator reconcile it.
+oc apply -f /tmp/practice-gateway.yaml
+
+# Display the Operator-reported conditions; Initialized and Deployed should eventually report True.
+oc get nginxgatewayfabric practice-gateway -n operator-extra -o jsonpath='{range .status.conditions[*]}{.type}{" => "}{.status}{" "}{.reason}{"\n"}{end}'
+
+# Inspect core workloads/services created as a consequence of the custom resource.
+oc get deployment,service,serviceaccount -n operator-extra
+
+# Inspect related NGINX resources created/managed by the Operator.
+oc get nginxgateway,nginxproxy -n operator-extra
+
+# Check recent events when the custom resource does not reconcile successfully.
+oc get events -n operator-extra --sort-by=.lastTimestamp
+
+# Inspect the custom resource status in full when Conditions do not explain enough.
+oc describe nginxgatewayfabric practice-gateway -n operator-extra
+
+# Check Operator-managed pods and their logs if reconciliation remains unsuccessful.
+oc get pods -n operator-extra
+```
+
+Reference: OpenShift 4.18 Operators overview and management: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/operators/understanding-operators
